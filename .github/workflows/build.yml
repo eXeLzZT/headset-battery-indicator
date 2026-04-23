@@ -2,7 +2,7 @@ name: Build AppImage
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "extra-option-charge" ]
   pull_request:
     branches: [ "main" ]
 
