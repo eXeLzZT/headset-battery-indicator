@@ -107,6 +107,11 @@ class PreferencesDialog(QDialog):
         form.addRow("Overlay Text:", self.chk_show_text)
         # ------------------------------------------
 
+        # --- NEW: Checkbox to show charge ---
+        self.chk_show_charge = QCheckBox("Show bolt inside icon")
+        form.addRow("Overlay Charge Icon:", self.chk_show_charge)
+        # ------------------------------------------
+
         layout.addLayout(form)
         
         btns = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
@@ -123,11 +128,15 @@ class PreferencesDialog(QDialog):
         # Load text option (Default True)
         show_text = self.settings.value("iconShowText", True, type=bool)
 
+        # Load charge option (Default False)
+        show_charge = self.settings.value("iconShowCharge", True, type=bool)
+
         self.update_btn_style(self.btn_fill, self.temp_fill)
         self.update_btn_style(self.btn_border, self.temp_border)
         self.combo_orient.setCurrentText(orient)
         self.spin_scale.setValue(scale)
         self.chk_show_text.setChecked(show_text)
+        self.chk_show_charge.setChecked(show_charge)
 
     def pick_color(self, target):
         initial = QColor(self.temp_fill if target == "fill" else self.temp_border)
@@ -154,7 +163,10 @@ class PreferencesDialog(QDialog):
         
         # Save the checkbox state
         self.settings.setValue("iconShowText", self.chk_show_text.isChecked())
-        
+
+        # Save the charge checkbox state
+        self.settings.setValue("iconShowCharge", self.chk_show_charge.isChecked())
+
         self.settings_saved.emit()
         self.accept()
 
@@ -264,6 +276,7 @@ class HeadsetBatteryTray(QSystemTrayIcon):
         self.vis_orient = self.settings.value("iconOrientation", "Horizontal", type=str)
         self.vis_scale = self.settings.value("iconScale", 75, type=int)
         self.vis_show_text = self.settings.value("iconShowText", True, type=bool)
+        self.vis_show_charge = self.settings.value("iconShowCharge", True, type=bool)
         logger.debug(f"Settings loaded: Notify={self.notify_enabled}, Threshold={self.notify_threshold}%, Lights={self.lights_on}")
 
 
@@ -366,6 +379,24 @@ class HeadsetBatteryTray(QSystemTrayIcon):
             painter.setFont(font)
             
             txt = "⚡" if is_charging else str(percentage)
+
+            # 1. Dark shadow offset for contrast
+            painter.setPen(QColor(0, 0, 0, 255))
+            offset = max(2, int(s * 0.03))
+            painter.drawText(QRectF(offset, offset, s, s), Qt.AlignCenter, txt)
+
+            # 2. Main text in border colour
+            painter.setPen(c_border)
+            painter.drawText(QRectF(0, 0, s, s), Qt.AlignCenter, txt)
+
+        if self.vis_show_charge & is_charging:
+            painter.setPen(c_border)
+            # Larger font (0.50 of total size)
+            font_size = int(s * 0.50 * scale_factor)
+            font = QFont("Sans Serif", font_size, QFont.Bold)
+            painter.setFont(font)
+
+            txt = "⚡"
 
             # 1. Dark shadow offset for contrast
             painter.setPen(QColor(0, 0, 0, 255))
