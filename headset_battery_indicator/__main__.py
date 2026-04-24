@@ -15,7 +15,7 @@ from PySide6.QtGui import QIcon, QAction, QActionGroup, QPainter, QPixmap, QColo
 from PySide6.QtWidgets import (QApplication, QSystemTrayIcon, QMenu, QDialog, 
                                QVBoxLayout, QPushButton, QColorDialog, QComboBox, 
                                QFormLayout, QDialogButtonBox, QSpinBox, QWidget,
-                               QButtonGroup, QRadioButton)
+                               QCheckBox, QButtonGroup, QRadioButton)
 # --- Config ---
 UPDATE_INTERVAL_MS = 15000  # 15 seconds
 ICON_OVERLAY_MODE_NONE = "none"
@@ -106,6 +106,9 @@ class PreferencesDialog(QDialog):
         self.spin_scale.setSuffix("%")
         form.addRow("Icon Zoom/Scale:", self.spin_scale)
 
+        self.chk_low_battery_red = QCheckBox("Use red fill on low battery (discharging)")
+        form.addRow("Low Battery Visual:", self.chk_low_battery_red)
+
         self.overlay_group = QButtonGroup(self)
         overlay_widget = QWidget(self)
         overlay_layout = QVBoxLayout(overlay_widget)
@@ -135,7 +138,8 @@ class PreferencesDialog(QDialog):
         self.temp_fill = self.settings.value("iconFillColor", "#00FF00", type=str)
         self.temp_border = self.settings.value("iconBorderColor", "#FFFFFF", type=str)
         orient = self.settings.value("iconOrientation", "Horizontal", type=str)
-        scale = self.settings.value("iconScale", 75, type=int) 
+        scale = self.settings.value("iconScale", 75, type=int)
+        low_battery_red = self.settings.value("iconLowBatteryRedEnabled", False, type=bool)
 
         overlay_mode = self.settings.value("iconOverlayMode", "", type=str)
         if not overlay_mode:
@@ -147,6 +151,7 @@ class PreferencesDialog(QDialog):
         self.update_btn_style(self.btn_border, self.temp_border)
         self.combo_orient.setCurrentText(orient)
         self.spin_scale.setValue(scale)
+        self.chk_low_battery_red.setChecked(low_battery_red)
         if overlay_mode == ICON_OVERLAY_MODE_NONE:
             self.radio_overlay_none.setChecked(True)
         elif overlay_mode == ICON_OVERLAY_MODE_CHARGING_ICON_ONLY:
@@ -183,6 +188,7 @@ class PreferencesDialog(QDialog):
         self.settings.setValue("iconBorderColor", self.temp_border)
         self.settings.setValue("iconOrientation", self.combo_orient.currentText())
         self.settings.setValue("iconScale", self.spin_scale.value())
+        self.settings.setValue("iconLowBatteryRedEnabled", self.chk_low_battery_red.isChecked())
 
         if self.radio_overlay_none.isChecked():
             overlay_mode = ICON_OVERLAY_MODE_NONE
@@ -308,6 +314,7 @@ class HeadsetBatteryTray(QSystemTrayIcon):
         self.vis_border = self.settings.value("iconBorderColor", "#FFFFFF", type=str)
         self.vis_orient = self.settings.value("iconOrientation", "Horizontal", type=str)
         self.vis_scale = self.settings.value("iconScale", 75, type=int)
+        self.vis_low_battery_red = self.settings.value("iconLowBatteryRedEnabled", False, type=bool)
         self.vis_overlay_mode = self.settings.value("iconOverlayMode", "", type=str)
         if not self.vis_overlay_mode:
             legacy_show_text = self.settings.value("iconShowText", True, type=bool)
@@ -341,6 +348,8 @@ class HeadsetBatteryTray(QSystemTrayIcon):
             return QIcon(pixmap)
 
         c_fill = QColor(self.vis_fill)
+        if self.vis_low_battery_red and (not is_charging) and percentage <= self.notify_threshold:
+            c_fill = QColor("#FF3B30")
         if is_charging: c_fill = c_fill.lighter(130)
         c_border = QColor(self.vis_border)
 
@@ -817,6 +826,8 @@ class HeadsetBatteryTray(QSystemTrayIcon):
         self.notify_threshold = action.data()
         self.settings.setValue("notifyThreshold", self.notify_threshold)
         self.notified_low_battery = False
+        if self.last_battery_data:
+            self.on_battery_result(self.last_battery_data)
         logger.info(f"Notification threshold set to: {self.notify_threshold}%")
 
 
