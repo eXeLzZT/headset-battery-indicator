@@ -14,9 +14,13 @@ from PySide6.QtCore import QTimer, QSettings, Signal, Slot, Qt, QRectF
 from PySide6.QtGui import QIcon, QAction, QActionGroup, QPainter, QPixmap, QColor, QFont, QPen, QBrush
 from PySide6.QtWidgets import (QApplication, QSystemTrayIcon, QMenu, QDialog, 
                                QVBoxLayout, QPushButton, QColorDialog, QComboBox, 
-                               QFormLayout, QDialogButtonBox, QSpinBox, QCheckBox)
+                               QFormLayout, QDialogButtonBox, QSpinBox, QWidget,
+                               QButtonGroup, QRadioButton)
 # --- Config ---
 UPDATE_INTERVAL_MS = 60000  # 60 seconds
+ICON_OVERLAY_MODE_NONE = "none"
+ICON_OVERLAY_MODE_TEXT_AND_ICON = "text_and_icon"
+ICON_OVERLAY_MODE_CHARGING_ICON_ONLY = "charging_icon_only"
 
 # --- LOGGING SETUP ---
 LOG_DIR = os.path.join(
@@ -102,15 +106,23 @@ class PreferencesDialog(QDialog):
         self.spin_scale.setSuffix("%")
         form.addRow("Icon Zoom/Scale:", self.spin_scale)
 
-        # --- NEW: Checkbox to show text ---
-        self.chk_show_text = QCheckBox("Show percentage/bolt inside icon")
-        form.addRow("Overlay Text:", self.chk_show_text)
-        # ------------------------------------------
+        self.overlay_group = QButtonGroup(self)
+        overlay_widget = QWidget(self)
+        overlay_layout = QVBoxLayout(overlay_widget)
+        overlay_layout.setContentsMargins(0, 0, 0, 0)
 
-        # --- NEW: Checkbox to show charge ---
-        self.chk_show_charge = QCheckBox("Show bolt inside icon")
-        form.addRow("Overlay Charge Icon:", self.chk_show_charge)
-        # ------------------------------------------
+        self.radio_overlay_none = QRadioButton("No overlay")
+        self.radio_overlay_text_and_icon = QRadioButton("Percentage + charging icon")
+        self.radio_overlay_charging_only = QRadioButton("Charging icon only")
+
+        self.overlay_group.addButton(self.radio_overlay_none)
+        self.overlay_group.addButton(self.radio_overlay_text_and_icon)
+        self.overlay_group.addButton(self.radio_overlay_charging_only)
+
+        overlay_layout.addWidget(self.radio_overlay_none)
+        overlay_layout.addWidget(self.radio_overlay_text_and_icon)
+        overlay_layout.addWidget(self.radio_overlay_charging_only)
+        form.addRow("Overlay mode:", overlay_widget)
 
         layout.addLayout(form)
         
@@ -124,19 +136,23 @@ class PreferencesDialog(QDialog):
         self.temp_border = self.settings.value("iconBorderColor", "#FFFFFF", type=str)
         orient = self.settings.value("iconOrientation", "Horizontal", type=str)
         scale = self.settings.value("iconScale", 75, type=int) 
-        
-        # Load text option (Default True)
-        show_text = self.settings.value("iconShowText", True, type=bool)
 
-        # Load charge option (Default False)
-        show_charge = self.settings.value("iconShowCharge", True, type=bool)
+        overlay_mode = self.settings.value("iconOverlayMode", "", type=str)
+        if not overlay_mode:
+            show_text = self.settings.value("iconShowText", True, type=bool)
+            show_charge = self.settings.value("iconShowCharge", True, type=bool)
+            overlay_mode = self._map_legacy_overlay_mode(show_text, show_charge)
 
         self.update_btn_style(self.btn_fill, self.temp_fill)
         self.update_btn_style(self.btn_border, self.temp_border)
         self.combo_orient.setCurrentText(orient)
         self.spin_scale.setValue(scale)
-        self.chk_show_text.setChecked(show_text)
-        self.chk_show_charge.setChecked(show_charge)
+        if overlay_mode == ICON_OVERLAY_MODE_NONE:
+            self.radio_overlay_none.setChecked(True)
+        elif overlay_mode == ICON_OVERLAY_MODE_CHARGING_ICON_ONLY:
+            self.radio_overlay_charging_only.setChecked(True)
+        else:
+            self.radio_overlay_text_and_icon.setChecked(True)
 
     def pick_color(self, target):
         initial = QColor(self.temp_fill if target == "fill" else self.temp_border)
@@ -155,17 +171,31 @@ class PreferencesDialog(QDialog):
         btn.setText(color_hex)
         btn.setStyleSheet(f"background-color: {color_hex}; color: {fg}; border: 1px solid #555;")
 
+    def _map_legacy_overlay_mode(self, show_text, show_charge):
+        if show_text:
+            return ICON_OVERLAY_MODE_TEXT_AND_ICON
+        if show_charge:
+            return ICON_OVERLAY_MODE_CHARGING_ICON_ONLY
+        return ICON_OVERLAY_MODE_NONE
+
     def save_settings(self):
         self.settings.setValue("iconFillColor", self.temp_fill)
         self.settings.setValue("iconBorderColor", self.temp_border)
         self.settings.setValue("iconOrientation", self.combo_orient.currentText())
         self.settings.setValue("iconScale", self.spin_scale.value())
-        
-        # Save the checkbox state
-        self.settings.setValue("iconShowText", self.chk_show_text.isChecked())
 
-        # Save the charge checkbox state
-        self.settings.setValue("iconShowCharge", self.chk_show_charge.isChecked())
+        if self.radio_overlay_none.isChecked():
+            overlay_mode = ICON_OVERLAY_MODE_NONE
+        elif self.radio_overlay_charging_only.isChecked():
+            overlay_mode = ICON_OVERLAY_MODE_CHARGING_ICON_ONLY
+        else:
+            overlay_mode = ICON_OVERLAY_MODE_TEXT_AND_ICON
+
+        # New setting
+        self.settings.setValue("iconOverlayMode", overlay_mode)
+
+        # Backward compatible values for older app versions
+        self.settings.setValue("iconShowText", overlay_mode == ICON_OVERLAY_MODE_TEXT_AND_ICON)
 
         self.settings_saved.emit()
         self.accept()
@@ -275,8 +305,16 @@ class HeadsetBatteryTray(QSystemTrayIcon):
         self.vis_border = self.settings.value("iconBorderColor", "#FFFFFF", type=str)
         self.vis_orient = self.settings.value("iconOrientation", "Horizontal", type=str)
         self.vis_scale = self.settings.value("iconScale", 75, type=int)
-        self.vis_show_text = self.settings.value("iconShowText", True, type=bool)
-        self.vis_show_charge = self.settings.value("iconShowCharge", True, type=bool)
+        self.vis_overlay_mode = self.settings.value("iconOverlayMode", "", type=str)
+        if not self.vis_overlay_mode:
+            legacy_show_text = self.settings.value("iconShowText", True, type=bool)
+            legacy_show_charge = self.settings.value("iconShowCharge", True, type=bool)
+            if legacy_show_text:
+                self.vis_overlay_mode = ICON_OVERLAY_MODE_TEXT_AND_ICON
+            elif legacy_show_charge:
+                self.vis_overlay_mode = ICON_OVERLAY_MODE_CHARGING_ICON_ONLY
+            else:
+                self.vis_overlay_mode = ICON_OVERLAY_MODE_NONE
         logger.debug(f"Settings loaded: Notify={self.notify_enabled}, Threshold={self.notify_threshold}%, Lights={self.lights_on}")
 
 
@@ -371,7 +409,15 @@ class HeadsetBatteryTray(QSystemTrayIcon):
                     painter.setBrush(c_fill); painter.setPen(Qt.NoPen)
                     painter.drawRoundedRect(fill_rect, s//40, s//40)
 
-        if self.vis_show_text:
+        show_text = (
+            self.vis_overlay_mode == ICON_OVERLAY_MODE_TEXT_AND_ICON and not is_charging
+        )
+        show_charging_icon = (
+            self.vis_overlay_mode in (ICON_OVERLAY_MODE_TEXT_AND_ICON, ICON_OVERLAY_MODE_CHARGING_ICON_ONLY)
+            and is_charging
+        )
+
+        if show_text:
             painter.setPen(c_border)
             # Larger font (0.50 of total size)
             font_size = int(s * 0.50 * scale_factor)
@@ -389,7 +435,7 @@ class HeadsetBatteryTray(QSystemTrayIcon):
             painter.setPen(c_border)
             painter.drawText(QRectF(0, 0, s, s), Qt.AlignCenter, txt)
 
-        if self.vis_show_charge & is_charging:
+        if show_charging_icon:
             painter.setPen(c_border)
             # Larger font (0.50 of total size)
             font_size = int(s * 0.50 * scale_factor)
