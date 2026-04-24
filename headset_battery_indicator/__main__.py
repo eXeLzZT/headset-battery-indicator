@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QApplication, QSystemTrayIcon, QMenu, QDialog,
                                QFormLayout, QDialogButtonBox, QSpinBox, QWidget,
                                QButtonGroup, QRadioButton)
 # --- Config ---
-UPDATE_INTERVAL_MS = 60000  # 60 seconds
+UPDATE_INTERVAL_MS = 15000  # 15 seconds
 ICON_OVERLAY_MODE_NONE = "none"
 ICON_OVERLAY_MODE_TEXT_AND_ICON = "text_and_icon"
 ICON_OVERLAY_MODE_CHARGING_ICON_ONLY = "charging_icon_only"
