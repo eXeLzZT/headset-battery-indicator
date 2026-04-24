@@ -348,6 +348,7 @@ class HeadsetBatteryTray(QSystemTrayIcon):
         pen_width = max(6, int(s * 0.06 * scale_factor))
         pen = QPen(c_border); pen.setWidth(pen_width)
         painter.setPen(pen)
+        overlay_rect = QRectF(0, 0, s, s)
         
         # UPDATED PROPORTIONS (Thicker)
         
@@ -367,6 +368,7 @@ class HeadsetBatteryTray(QSystemTrayIcon):
             
             body = QRectF(x_start, y_start, w_body, h_total)
             nub = QRectF(x_start + w_body, y_start + (h_total - h_nub)/2, w_nub, h_nub)
+            overlay_rect = body
             
             painter.setBrush(Qt.NoBrush)
             painter.drawRoundedRect(body, s//15, s//15) # Softer rounding
@@ -396,6 +398,7 @@ class HeadsetBatteryTray(QSystemTrayIcon):
             nub = QRectF(x_start + (w_total - w_nub)/2, y_start, w_nub, h_nub)
             # Body at bottom
             body = QRectF(x_start, y_start + h_nub, w_total, h_body)
+            overlay_rect = body
             
             painter.setPen(pen); painter.setBrush(Qt.NoBrush)
             painter.drawRoundedRect(body, s//15, s//15)
@@ -432,11 +435,17 @@ class HeadsetBatteryTray(QSystemTrayIcon):
             # 1. Dark shadow offset for contrast
             painter.setPen(QColor(0, 0, 0, 255))
             offset = max(2, int(s * 0.03))
-            painter.drawText(QRectF(offset, offset, s, s), Qt.AlignCenter, txt)
+            shadow_rect = QRectF(
+                overlay_rect.x() + offset,
+                overlay_rect.y() + offset,
+                overlay_rect.width(),
+                overlay_rect.height(),
+            )
+            painter.drawText(shadow_rect, Qt.AlignCenter, txt)
 
             # 2. Main text in border colour
             painter.setPen(c_border)
-            painter.drawText(QRectF(0, 0, s, s), Qt.AlignCenter, txt)
+            painter.drawText(overlay_rect, Qt.AlignCenter, txt)
 
         if show_charging_icon:
             painter.setPen(c_border)
@@ -450,11 +459,17 @@ class HeadsetBatteryTray(QSystemTrayIcon):
             # 1. Dark shadow offset for contrast
             painter.setPen(QColor(0, 0, 0, 255))
             offset = max(2, int(s * 0.03))
-            painter.drawText(QRectF(offset, offset, s, s), Qt.AlignCenter, txt)
+            shadow_rect = QRectF(
+                overlay_rect.x() + offset,
+                overlay_rect.y() + offset,
+                overlay_rect.width(),
+                overlay_rect.height(),
+            )
+            painter.drawText(shadow_rect, Qt.AlignCenter, txt)
 
             # 2. Main text in border colour
             painter.setPen(c_border)
-            painter.drawText(QRectF(0, 0, s, s), Qt.AlignCenter, txt)
+            painter.drawText(overlay_rect, Qt.AlignCenter, txt)
         # -------------------------------------------------------
 
         painter.end()
