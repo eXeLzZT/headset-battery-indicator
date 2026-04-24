@@ -217,6 +217,7 @@ class HeadsetBatteryTray(QSystemTrayIcon):
         
         self.settings = QSettings()
         self.load_settings()
+        self._worker = None
 
         self.headsetcontrol_path = self._find_headsetcontrol()
         
@@ -240,6 +241,8 @@ class HeadsetBatteryTray(QSystemTrayIcon):
         if self.headsetcontrol_path:
             self.timer.start(UPDATE_INTERVAL_MS)
             
+        # Ensure a valid icon exists before showing the tray icon.
+        self.setIcon(self.paint_battery_icon(0, False, error=False))
         self.update_status()
         self.setVisible(True)
         
@@ -850,14 +853,25 @@ class HeadsetBatteryTray(QSystemTrayIcon):
         Skips if a previous query is still running to avoid overlapping
         threads and potential out-of-order signal delivery.
         """
-        if hasattr(self, '_worker') and self._worker.isRunning():
-            logger.debug("update_status: previous worker still running, skipping tick")
-            return
+        if self._worker is not None:
+            try:
+                if self._worker.isRunning():
+                    logger.debug("update_status: previous worker still running, skipping tick")
+                    return
+            except RuntimeError:
+                # The underlying Qt object was already destroyed.
+                self._worker = None
 
         self._worker = BatteryWorker(self.headsetcontrol_path, self.use_test_device)
         self._worker.status_received.connect(self.on_battery_result)
+        self._worker.finished.connect(self._on_worker_finished)
         self._worker.finished.connect(self._worker.deleteLater)
         self._worker.start()
+
+    @Slot()
+    def _on_worker_finished(self):
+        """Clears stale worker references once a run has finished."""
+        self._worker = None
 
     def on_battery_result(self, data):
         """Slot that receives data from the worker thread and updates the UI."""
